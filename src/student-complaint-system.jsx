@@ -2249,7 +2249,7 @@ function RegisterUser({ users, onAdd, onDelete, onUpdate }) {
       const data = await res.json();
       if (!res.ok) return toast(data.message || "Registration failed.", "error");
 
-      onAdd(form);
+      await onAdd(form);
       setSuccess(`${form.name} has been registered as ${form.role}.`);
       setForm({ name: "", email: "", password: "", role: "student", course: "", dept: "" });
       setTimeout(() => setSuccess(""), 3000);
@@ -3023,14 +3023,28 @@ function AppInner() {
   // Update concern in DB then refresh
   const updateConcern = async (id, updates) => {
     // Optimistic local update
+    const previousConcerns = concerns;
     setConcerns(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c));
     try {
-      await fetch(`/concerns/${id}`, {
+      const res = await fetch(`/concerns/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(updates),
       });
-    } catch (err) { console.error("Failed to update concern:", err); }
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setConcerns(previousConcerns);
+        toast(data.message || "Failed to update concern.", "error");
+        return { success: false, message: data.message || "Failed to update concern." };
+      }
+      await loadConcerns();
+      return { success: true };
+    } catch (err) {
+      console.error("Failed to update concern:", err);
+      setConcerns(previousConcerns);
+      toast("Could not connect to server.", "error");
+      return { success: false, message: "Could not connect to server." };
+    }
   };
 
   const deleteConcern = async (id) => {
@@ -3087,8 +3101,7 @@ function AppInner() {
   };
 
   // Refresh user list after adding a new user
-  const addUser = async (u) => {
-    setUsers(prev => [...prev, { ...u, id: prev.length + 1 }]);
+  const addUser = async () => {
     await loadUsers();
   };
 

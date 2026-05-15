@@ -51,6 +51,12 @@ async function columnExists(connection, tableName, columnName) {
   return rows.length > 0;
 }
 
+async function ensureColumn(connection, tableName, columnName, definition) {
+  if (!(await columnExists(connection, tableName, columnName))) {
+    await connection.query(`ALTER TABLE ${tableName} ADD COLUMN ${definition}`);
+  }
+}
+
 async function initializeDatabase() {
   const connection = await getPool().getConnection();
 
@@ -67,6 +73,10 @@ async function initializeDatabase() {
         created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
+
+    await connection.query("ALTER TABLE users MODIFY COLUMN role ENUM('student','staff','admin') NOT NULL DEFAULT 'student'");
+    await ensureColumn(connection, "users", "course", "course VARCHAR(100) DEFAULT NULL");
+    await ensureColumn(connection, "users", "dept", "dept VARCHAR(150) DEFAULT NULL");
 
     await connection.query(`
       CREATE TABLE IF NOT EXISTS concerns (
@@ -94,26 +104,17 @@ async function initializeDatabase() {
     await connection.query("UPDATE concerns SET category = 'Administrative Concern' WHERE category = 'Financial'");
     await connection.query("ALTER TABLE concerns MODIFY COLUMN category ENUM('Services','Facilities','Administrative Concern') NOT NULL");
 
-    if (!(await columnExists(connection, "concerns", "admin_instructions"))) {
-      await connection.query("ALTER TABLE concerns ADD COLUMN admin_instructions TEXT DEFAULT NULL");
-    }
+    await ensureColumn(connection, "concerns", "admin_instructions", "admin_instructions TEXT DEFAULT NULL");
+    await ensureColumn(connection, "concerns", "submission_type", "submission_type ENUM('Concern','Feedback') NOT NULL DEFAULT 'Concern'");
+    await ensureColumn(connection, "concerns", "archived", "archived TINYINT(1) NOT NULL DEFAULT 0");
 
-    if (!(await columnExists(connection, "concerns", "submission_type"))) {
-      await connection.query("ALTER TABLE concerns ADD COLUMN submission_type ENUM('Concern','Feedback') NOT NULL DEFAULT 'Concern'");
-    }
-
-    if (!(await columnExists(connection, "concerns", "archived"))) {
-      await connection.query("ALTER TABLE concerns ADD COLUMN archived TINYINT(1) NOT NULL DEFAULT 0");
-    }
-
-    if (!(await columnExists(connection, "concerns", "admin_seen"))) {
-      await connection.query("ALTER TABLE concerns ADD COLUMN admin_seen TINYINT(1) NOT NULL DEFAULT 0");
+    const hadAdminSeen = await columnExists(connection, "concerns", "admin_seen");
+    await ensureColumn(connection, "concerns", "admin_seen", "admin_seen TINYINT(1) NOT NULL DEFAULT 0");
+    if (!hadAdminSeen) {
       await connection.query("UPDATE concerns SET admin_seen = 1");
     }
 
-    if (!(await columnExists(connection, "concerns", "admin_resolved_seen"))) {
-      await connection.query("ALTER TABLE concerns ADD COLUMN admin_resolved_seen TINYINT(1) NOT NULL DEFAULT 1");
-    }
+    await ensureColumn(connection, "concerns", "admin_resolved_seen", "admin_resolved_seen TINYINT(1) NOT NULL DEFAULT 1");
 
     await connection.query(`
       CREATE TABLE IF NOT EXISTS messages (
@@ -126,16 +127,29 @@ async function initializeDatabase() {
         FOREIGN KEY (concern_id) REFERENCES concerns(id) ON DELETE CASCADE
       )
     `);
+    await ensureColumn(connection, "messages", "concern_id", "concern_id INT NOT NULL");
+    await ensureColumn(connection, "messages", "sender_name", "sender_name VARCHAR(150) NOT NULL");
+    await ensureColumn(connection, "messages", "sender_role", "sender_role ENUM('admin','staff','student') NOT NULL");
+    await ensureColumn(connection, "messages", "message", "message TEXT NOT NULL");
+    await ensureColumn(connection, "messages", "created_at", "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP");
+    await connection.query("ALTER TABLE messages MODIFY COLUMN sender_role ENUM('admin','staff','student') NOT NULL");
 
-    const [rows] = await connection.query("SELECT id FROM users WHERE role = 'admin' LIMIT 1");
-    if (rows.length === 0) {
-      const hashed = await bcrypt.hash("admin123", 10);
-      await connection.query(
-        `INSERT INTO users (role, full_name, email_address, password, dept)
-         VALUES ('admin', 'System Administrator', 'admin@poly.edu', ?, 'Office of the Registrar')`,
-        [hashed],
-      );
-    }
+    const adminEmail = process.env.DEFAULT_ADMIN_EMAIL || "admin@poly.edu";
+    const adminPassword = process.env.DEFAULT_ADMIN_PASSWORD || "admin123";
+    const adminName = process.env.DEFAULT_ADMIN_NAME || "System Administrator";
+    const adminDept = process.env.DEFAULT_ADMIN_DEPT || "Office of the Registrar";
+    const hashed = await bcrypt.hash(adminPassword, 10);
+
+    await connection.query(
+      `INSERT INTO users (role, full_name, email_address, password, dept)
+       VALUES ('admin', ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE
+         role = 'admin',
+         full_name = VALUES(full_name),
+         password = VALUES(password),
+         dept = VALUES(dept)`,
+      [adminName, adminEmail, hashed, adminDept],
+    );
   } finally {
     connection.release();
   }
@@ -146,6 +160,12 @@ export async function query(...args) {
     initPromise = initializeDatabase();
   }
 
-  await initPromise;
+  try {
+    await initPromise;
+  } catch (err) {
+    initPromise = null;
+    throw err;
+  }
+
   return getPool().query(...args);
 }

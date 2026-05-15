@@ -377,6 +377,11 @@ app.post("/concerns/:id/messages", async (req, res) => {
   }
 
   try {
+    const [concerns] = await query("SELECT id FROM concerns WHERE id = ? LIMIT 1", [id]);
+    if (concerns.length === 0) {
+      return res.status(404).json({ message: "Concern not found. Please refresh and try again." });
+    }
+
     const [result] = await query(
       "INSERT INTO messages (concern_id, sender_name, sender_role, message) VALUES (?, ?, ?, ?)",
       [id, senderName, senderRole, message],
