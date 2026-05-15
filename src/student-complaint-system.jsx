@@ -1701,6 +1701,8 @@ function AdminConcerns({ concerns, archivedConcerns = [], users, onUpdate, onDel
   const [showNewOnly, setShowNewOnly] = useState(false);
   const [archiveView, setArchiveView] = useState("active");
   const [newMsg,    setNewMsg] = useState("");
+  const [messageError, setMessageError] = useState("");
+  const [sendingMsg, setSendingMsg] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
   // Assign modal state
   const [assignTarget, setAssignTarget] = useState(null); // { concern, staffId }
@@ -1716,8 +1718,19 @@ function AdminConcerns({ concerns, archivedConcerns = [], users, onUpdate, onDel
   };
 
   const handleSendMsg = async () => {
-    if (!newMsg.trim() || !selected) return;
-    await onSendMessage(selected.id, newMsg.trim());
+    const text = newMsg.trim();
+    if (!text || !selected || sendingMsg) return;
+
+    setSendingMsg(true);
+    setMessageError("");
+    const result = await onSendMessage(selected.id, text);
+    setSendingMsg(false);
+
+    if (result?.success === false) {
+      setMessageError(result.message || "Message could not be sent.");
+      return;
+    }
+
     setNewMsg("");
   };
 
@@ -2104,33 +2117,39 @@ function AdminConcerns({ concerns, archivedConcerns = [], users, onUpdate, onDel
               </div>
 
               {/* Compose */}
-              <div style={{ padding: 10, background: "white", borderTop: "1px solid #e2e8f0", display: "flex", gap: 8, alignItems: "flex-end", flexShrink: 0 }}>
+              <div style={{ padding: 10, background: "white", borderTop: "1px solid #e2e8f0", flexShrink: 0 }}>
+                {messageError && (
+                  <p style={{ fontSize: 11, color: "#be123c", fontWeight: 700, marginBottom: 8 }}>{messageError}</p>
+                )}
+                <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
                 <textarea
                   value={newMsg}
-                  onChange={e => setNewMsg(e.target.value)}
+                  onChange={e => { setNewMsg(e.target.value); setMessageError(""); }}
                   onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSendMsg(); } }}
                   placeholder="Type a message… (Enter to send)"
                   rows={2}
+                  disabled={sendingMsg}
                   style={{
                     flex: 1, padding: "7px 10px", borderRadius: 8,
                     border: "1.5px solid #e2e8f0", fontSize: 12, color: "#0f172a",
-                    background: "#f8fafc", resize: "none", lineHeight: 1.5,
+                    background: sendingMsg ? "#f1f5f9" : "#f8fafc", resize: "none", lineHeight: 1.5,
                   }}
                 />
                 <button
                   onClick={handleSendMsg}
-                  disabled={!newMsg.trim()}
+                  disabled={!newMsg.trim() || sendingMsg}
                   className="btn-primary"
                   style={{
                     padding: "8px 14px", borderRadius: 8, border: "none",
-                    background: newMsg.trim() ? "linear-gradient(135deg, #0ea5e9, #0284c7)" : "#e2e8f0",
-                    color: newMsg.trim() ? "white" : "#94a3b8",
-                    fontSize: 12, fontWeight: 700, cursor: newMsg.trim() ? "pointer" : "not-allowed",
+                    background: newMsg.trim() && !sendingMsg ? "linear-gradient(135deg, #0ea5e9, #0284c7)" : "#e2e8f0",
+                    color: newMsg.trim() && !sendingMsg ? "white" : "#94a3b8",
+                    fontSize: 12, fontWeight: 700, cursor: newMsg.trim() && !sendingMsg ? "pointer" : "not-allowed",
                     flexShrink: 0,
                   }}
                 >
                   Send ➤
                 </button>
+              </div>
               </div>
             </div>
 
@@ -3054,8 +3073,17 @@ function AppInner() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ senderName, senderRole, message }),
       });
-      if (res.ok) await loadMessages(concernId);
-    } catch (err) { console.error("Failed to send message:", err); }
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        await loadMessages(concernId);
+        return { success: true };
+      }
+      toast(data.message || "Failed to send message.", "error");
+      return { success: false, message: data.message || "Failed to send message." };
+    } catch (err) {
+      console.error("Failed to send message:", err);
+      return { success: false, message: "Could not connect to server." };
+    }
   };
 
   // Refresh user list after adding a new user
