@@ -1709,11 +1709,14 @@ function AdminConcerns({ concerns, archivedConcerns = [], users, onUpdate, onDel
   const [instructions, setInstructions] = useState("");
   const staffList = users.filter(u => u.role === "staff");
 
-  const handleSelect = (c) => {
+  const handleSelect = async (c) => {
     onSelect(c);
     if (c) onLoadMessages(c.id);
     if (c && (!Number(c.adminSeen) || (c.status === "Resolved" && !Number(c.adminResolvedSeen)))) {
-      onUpdate(c.id, { adminSeen: 1, adminResolvedSeen: 1 });
+      const result = await onUpdate(c.id, { adminSeen: 1, adminResolvedSeen: 1 });
+      if (result?.success !== false) {
+        onSelect({ ...c, adminSeen: 1, adminResolvedSeen: 1 });
+      }
     }
   };
 

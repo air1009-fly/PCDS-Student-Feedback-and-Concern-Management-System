@@ -67,6 +67,22 @@ app.get("/health", async (req, res) => {
   }
 });
 
+app.get("/debug/schema", async (req, res) => {
+  try {
+    const [concernColumns] = await query("SHOW COLUMNS FROM concerns");
+    const [messageColumns] = await query("SHOW COLUMNS FROM messages");
+    const [userColumns] = await query("SHOW COLUMNS FROM users");
+    res.json({
+      users: userColumns.map((column) => ({ field: column.Field, type: column.Type })),
+      concerns: concernColumns.map((column) => ({ field: column.Field, type: column.Type })),
+      messages: messageColumns.map((column) => ({ field: column.Field, type: column.Type })),
+    });
+  } catch (err) {
+    console.error("Schema debug error:", err.message);
+    sendServerError(res, err);
+  }
+});
+
 app.post("/register", async (req, res) => {
   const { role, full_name, email_address, password, course, dept } = req.body;
 
@@ -327,10 +343,12 @@ app.patch("/concerns/:id", async (req, res) => {
   values.push(id);
 
   try {
-    const [result] = await query(`UPDATE concerns SET ${fields.join(", ")} WHERE id = ?`, values);
-    if (result.affectedRows === 0) {
+    const [existing] = await query("SELECT id FROM concerns WHERE id = ? LIMIT 1", [id]);
+    if (existing.length === 0) {
       return res.status(404).json({ message: "Concern not found." });
     }
+
+    await query(`UPDATE concerns SET ${fields.join(", ")} WHERE id = ?`, values);
     res.json({ message: "Concern updated successfully." });
   } catch (err) {
     console.error("Update concern error:", err.message);
@@ -386,7 +404,7 @@ app.post("/concerns/:id/messages", async (req, res) => {
       "INSERT INTO messages (concern_id, sender_name, sender_role, message) VALUES (?, ?, ?, ?)",
       [id, senderName, senderRole, message],
     );
-    res.json({ id: result.insertId, message: "Message sent." });
+    res.json({ id: result.insertId || null, message: "Message sent." });
   } catch (err) {
     console.error("Send message error:", err.message);
     sendServerError(res, err);
