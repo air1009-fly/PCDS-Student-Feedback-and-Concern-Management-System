@@ -1,0 +1,728 @@
+﻿import { useState } from "react";
+import logoImage from "./assets/images.jpg";
+
+// ─── GLOBAL STYLES (injected ONCE at App root) ──────────────
+const GlobalStyles = () => (
+  <style>{`
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+    *, *::before, *::after {
+      font-family: 'Inter', sans-serif;
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    html, body, #root { height: 100%; }
+
+    body {
+      background: #f1f5f9;
+      overflow-x: hidden;
+      color: #0f172a;
+    }
+
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track { background: #f1f5f9; }
+    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+
+    .fade-in  { animation: fadeIn  0.3s ease forwards; }
+    .scale-in { animation: scaleIn 0.2s ease forwards; }
+
+    @keyframes fadeIn  { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
+    @keyframes scaleIn { from { opacity:0; transform:scale(0.97);     } to { opacity:1; transform:scale(1);     } }
+
+    /* ── Sidebar nav items ── */
+    .nav-item {
+      transition: background 0.15s ease, color 0.15s ease;
+      border-left: 3px solid transparent;
+    }
+    .nav-item:hover {
+      background: rgba(255,255,255,0.08) !important;
+      color: #f1f5f9 !important;
+    }
+    .nav-item.active {
+      background: rgba(59,130,246,0.18) !important;
+      border-left: 3px solid #3b82f6 !important;
+      color: #fff !important;
+    }
+
+    /* ── Card hover ── */
+    .card-hover { transition: box-shadow 0.2s, transform 0.2s; }
+    .card-hover:hover { box-shadow: 0 6px 24px rgba(0,0,0,0.09); transform: translateY(-2px); }
+
+    /* ── Primary button ── */
+    .btn-primary { transition: filter 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease; }
+    .btn-primary:hover:not(:disabled) {
+      filter: brightness(1.1);
+      transform: translateY(-1px);
+      box-shadow: 0 4px 14px rgba(37,99,235,0.35);
+    }
+    .btn-primary:active:not(:disabled) { transform: translateY(0); filter: brightness(0.97); }
+
+    /* ── Secondary button ── */
+    .btn-secondary { transition: background 0.15s ease, border-color 0.15s ease; }
+    .btn-secondary:hover { background: #e2e8f0 !important; border-color: #cbd5e1 !important; }
+
+    /* ── Table row hover ── */
+    .concern-row { transition: background 0.12s; cursor: default; }
+    .concern-row:hover { background: #f8fafc !important; }
+
+    /* ── Focus rings ── */
+    input:focus, select:focus, textarea:focus {
+      outline: none;
+      border-color: #3b82f6 !important;
+      box-shadow: 0 0 0 3px rgba(59,130,246,0.15);
+    }
+
+    /* ── Print ── */
+    @media print {
+      .no-print { display: none !important; }
+      body { background: white; }
+    }
+  `}</style>
+);
+
+// ─── MOCK DATABASE ───────────────────────────────────────────
+const INITIAL_USERS = [
+  { id: 1, name: "Juan dela Cruz",  email: "juan@poly.edu",   password: "student123", role: "student", course: "BSIT", year: "3rd Year" },
+  { id: 2, name: "Maria Santos",    email: "maria@poly.edu",  password: "student123", role: "student", course: "BSBA", year: "2nd Year" },
+  { id: 3, name: "Carlo Reyes",     email: "admin@poly.edu",  password: "admin123",   role: "admin",   dept: "Office of the Registrar" },
+  { id: 4, name: "Ana Gomez",       email: "staff@poly.edu",  password: "staff123",   role: "staff",   dept: "Student Affairs" },
+  { id: 5, name: "Ben Torres",      email: "staff2@poly.edu", password: "staff123",   role: "staff",   dept: "Academic Affairs" },
+];
+
+const INITIAL_CONCERNS = [
+  { id: 1, studentId: 1, studentName: "Juan dela Cruz", subject: "Late Grade Submission",         category: "Academic",   description: "My professor hasn't submitted grades for Semester 1. It has been over a month and it's affecting my academic standing.",               status: "Pending",     priority: "High",   assignedTo: null, assignedName: "",          remarks: "",                                                                                  date: "2025-04-10" },
+  { id: 2, studentId: 2, studentName: "Maria Santos",   subject: "Broken Aircon in Room 203",     category: "Facilities", description: "The air conditioning in Room 203 has been non-functional for 2 weeks. Classes are unbearable in the heat.",                       status: "In Progress", priority: "Medium", assignedTo: 4,    assignedName: "Ana Gomez", remarks: "Coordinating with the maintenance team. Parts have been ordered.",                date: "2025-04-12" },
+  { id: 3, studentId: 1, studentName: "Juan dela Cruz", subject: "Scholarship Allowance Delay",   category: "Financial",  description: "My scholarship allowance for the current semester has not been released. It is already past the scheduled date.",                  status: "Resolved",    priority: "High",   assignedTo: 5,    assignedName: "Ben Torres", remarks: "Coordinated with the Finance Office. Allowance was released on April 18, 2025.", date: "2025-04-08" },
+  { id: 4, studentId: 2, studentName: "Maria Santos",   subject: "Library Closing Hours During Exams", category: "Facilities", description: "The library closes at 5PM even during exam week when students need extended study hours.",                               status: "In Progress", priority: "Low",    assignedTo: 4,    assignedName: "Ana Gomez", remarks: "Discussing with the Library Director for extended hours proposal.",                date: "2025-04-15" },
+];
+
+// ─── HELPERS ────────────────────────────────────────────────
+const catEmoji = { Academic: "[A]", Facilities: "[F]", Financial: "[$]" };
+
+// ─── BADGE ──────────────────────────────────────────────────
+function Badge({ text, type = "status" }) {
+  const statusStyles = {
+    "Pending":     { background: "#fffbeb", color: "#b45309", border: "1px solid #fde68a", dot: "#f59e0b" },
+    "In Progress": { background: "#f0f9ff", color: "#0369a1", border: "1px solid #bae6fd", dot: "#0ea5e9" },
+    "Resolved":    { background: "#f0fdf4", color: "#15803d", border: "1px solid #bbf7d0", dot: "#10b981" },
+  };
+  const priorityStyles = {
+    "High":   { background: "#fff1f2", color: "#be123c", border: "1px solid #fecdd3" },
+    "Medium": { background: "#fff7ed", color: "#c2410c", border: "1px solid #fed7aa" },
+    "Low":    { background: "#f8fafc", color: "#475569", border: "1px solid #e2e8f0" },
+  };
+
+  const s = type === "status" ? statusStyles[text] : priorityStyles[text];
+  if (!s) return null;
+
+  return (
+    <span style={{
+      display: "inline-flex", alignItems: "center", gap: 4,
+      padding: "2px 8px", borderRadius: 999, fontSize: 11,
+      fontWeight: 600, background: s.background, color: s.color, border: s.border,
+      whiteSpace: "nowrap", flexShrink: 0,
+    }}>
+      {type === "status" && (
+        <span style={{ width: 6, height: 6, borderRadius: "50%", background: s.dot, flexShrink: 0 }} />
+      )}
+      {text}
+    </span>
+  );
+}
+
+// ─── MODAL ──────────────────────────────────────────────────
+function Modal({ children, onClose, title, size = "md" }) {
+  const widths = { sm: 420, md: 560, lg: 720, xl: 900 };
+  return (
+    <div
+      style={{
+        position: "fixed", inset: 0, zIndex: 50,
+        display: "flex", alignItems: "center", justifyContent: "center",
+        padding: 16, background: "rgba(15,23,42,0.6)", backdropFilter: "blur(4px)",
+      }}
+      onClick={onClose}
+    >
+      <div
+        className="scale-in"
+        style={{
+          background: "white", borderRadius: 16, boxShadow: "0 25px 60px rgba(0,0,0,0.25)",
+          overflow: "hidden", display: "flex", flexDirection: "column",
+          maxWidth: widths[size], width: "100%", maxHeight: "90vh",
+        }}
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Modal header */}
+        <div style={{
+          display: "flex", alignItems: "center", justifyContent: "space-between",
+          padding: "16px 24px", borderBottom: "1px solid #f1f5f9",
+        }}>
+          <h2 style={{ fontSize: 17, fontWeight: 700, color: "#0f172a" }}>{title}</h2>
+          <button
+            onClick={onClose}
+            style={{
+              width: 32, height: 32, borderRadius: "50%", border: "none", cursor: "pointer",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              background: "transparent", color: "#64748b", fontSize: 16,
+            }}
+            onMouseEnter={e => e.currentTarget.style.background = "#f1f5f9"}
+            onMouseLeave={e => e.currentTarget.style.background = "transparent"}
+          >✕</button>
+        </div>
+        <div style={{ overflowY: "auto", flex: 1 }}>{children}</div>
+      </div>
+    </div>
+  );
+}
+
+// ─── STAT CARD ───────────────────────────────────────────────
+function StatCard({ icon, label, value, color, sub }) {
+  const colors = {
+    blue:    { bg: "#eff6ff", iconBg: "#3b82f6", border: "#bfdbfe" },
+    amber:   { bg: "#fffbeb", iconBg: "#f59e0b", border: "#fde68a" },
+    emerald: { bg: "#ecfdf5", iconBg: "#10b981", border: "#a7f3d0" },
+    rose:    { bg: "#fff1f2", iconBg: "#f43f5e", border: "#fecdd3" },
+    sky:     { bg: "#f0f9ff", iconBg: "#0ea5e9", border: "#bae6fd" },
+  };
+  const c = colors[color] || colors.blue;
+  return (
+    <div className="card-hover" style={{
+      background: c.bg, border: `1px solid ${c.border}`,
+      borderRadius: 16, padding: 20,
+    }}>
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
+        <div>
+          <p style={{ fontSize: 11, fontWeight: 600, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.06em" }}>{label}</p>
+          <p style={{ fontSize: 32, fontWeight: 800, color: "#0f172a", marginTop: 4 }}>{value}</p>
+          {sub && <p style={{ fontSize: 12, color: "#94a3b8", marginTop: 2 }}>{sub}</p>}
+        </div>
+        <div style={{
+          width: 40, height: 40, borderRadius: 12, flexShrink: 0,
+          display: "flex", alignItems: "center", justifyContent: "center",
+          background: c.iconBg, color: "white", fontSize: 18,
+        }}>{icon}</div>
+      </div>
+    </div>
+  );
+}
+
+// ─── SIDEBAR ────────────────────────────────────────────────
+function Sidebar({ navItems, active, onNav, onLogout, user }) {
+  return (
+    <aside
+      className="no-print"
+      style={{
+        display: "flex", flexDirection: "column", height: "100%",
+        background: "linear-gradient(180deg, #1e3a5f 0%, #1e2d4a 100%)",
+        width: 240, minWidth: 240, flexShrink: 0,
+        boxShadow: "2px 0 12px rgba(0,0,0,0.15)",
+      }}
+    >
+      {/* Logo / Brand */}
+      <div style={{ padding: "24px 20px 20px", borderBottom: "1px solid rgba(255,255,255,0.07)" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <div style={{
+            width: 42, height: 42, borderRadius: 10, flexShrink: 0,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            background: "white",
+          }}>
+            <img src={logoImage} alt="Logo" style={{ width: 30, height: 30, objectFit: "contain" }} />
+          </div>
+          <div>
+            <p style={{ fontSize: 13, fontWeight: 700, color: "#f1f5f9", lineHeight: 1.3 }}>PCDS</p>
+            <p style={{ fontSize: 10, color: "#94a3b8", fontWeight: 400, lineHeight: 1.4 }}>Concern Management System</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Nav */}
+      <nav style={{ flex: 1, padding: "12px 10px", overflowY: "auto" }}>
+        <p style={{ fontSize: 10, fontWeight: 600, color: "#475569", textTransform: "uppercase", letterSpacing: "0.08em", padding: "8px 10px 6px" }}>Menu</p>
+        {navItems.map(item => (
+          <button
+            key={item.key}
+            onClick={() => onNav(item.key)}
+            className={`nav-item${active === item.key ? " active" : ""}`}
+            style={{
+              width: "100%", display: "flex", alignItems: "center", gap: 10,
+              padding: "10px 12px", borderRadius: 8, marginBottom: 2,
+              background: "transparent", border: "none", cursor: "pointer", textAlign: "left",
+              color: active === item.key ? "#fff" : "#94a3b8",
+            }}
+          >
+            <span style={{ fontSize: 15, flexShrink: 0, width: 20, textAlign: "center" }}>{item.icon}</span>
+            <span style={{ fontSize: 13, fontWeight: active === item.key ? 600 : 400 }}>{item.label}</span>
+          </button>
+        ))}
+      </nav>
+
+      {/* User info + logout */}
+      <div style={{ padding: "12px 14px 16px", borderTop: "1px solid rgba(255,255,255,0.07)" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10, padding: "8px 10px", borderRadius: 8, background: "rgba(255,255,255,0.05)" }}>
+          <div style={{
+            width: 32, height: 32, borderRadius: "50%", flexShrink: 0,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            background: "linear-gradient(135deg, #3b82f6, #1d4ed8)",
+            color: "white", fontSize: 13, fontWeight: 700,
+          }}>{user.name.charAt(0).toUpperCase()}</div>
+          <div style={{ overflow: "hidden", flex: 1 }}>
+            <p style={{ fontSize: 12, fontWeight: 600, color: "#e2e8f0", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{user.name}</p>
+            <p style={{ fontSize: 10, color: "#64748b", textTransform: "capitalize" }}>{user.role}</p>
+          </div>
+        </div>
+        <button
+          onClick={onLogout}
+          style={{
+            width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+            padding: "8px 12px", borderRadius: 8, border: "1px solid rgba(248,113,113,0.25)", cursor: "pointer",
+            color: "#fca5a5", background: "rgba(248,113,113,0.08)",
+            fontSize: 12, fontWeight: 600, transition: "all 0.15s ease",
+          }}
+          onMouseEnter={e => { e.currentTarget.style.background = "rgba(248,113,113,0.18)"; e.currentTarget.style.borderColor = "rgba(248,113,113,0.4)"; }}
+          onMouseLeave={e => { e.currentTarget.style.background = "rgba(248,113,113,0.08)"; e.currentTarget.style.borderColor = "rgba(248,113,113,0.25)"; }}
+        >
+          <span style={{ fontSize: 13 }}>↩</span> Sign Out
+        </button>
+      </div>
+    </aside>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════
+// LOGIN PAGE
+// ═══════════════════════════════════════════════════════════
+function LoginPage({ onLogin, error }) {
+  const [email,    setEmail]    = useState("");
+  const [password, setPassword] = useState("");
+  const [role,     setRole]     = useState("student");
+  const [showPwd,  setShowPwd]  = useState(false);
+  const [loading,  setLoading]  = useState(false);
+
+  const handleSubmit = async () => {
+    setLoading(true);
+    await onLogin(email, password, role);
+    setLoading(false);
+  };
+
+  const demos = [];
+  // Demo credentials removed for production
+
+  return (
+    /* Outermost wrapper — position:relative so the absolute decorations stay contained */
+    <div style={{
+      position: "relative", overflow: "hidden",
+      background: "linear-gradient(135deg, #0f172a 0%, #1e3a5f 50%, #0c4a6e 100%)",
+      minHeight: "100vh", width: "100%",
+      display: "flex", alignItems: "center", justifyContent: "center",
+      padding: 16,
+    }}>
+      {/* Background decoration blobs */}
+      <div aria-hidden style={{ position: "absolute", inset: 0, pointerEvents: "none", overflow: "hidden" }}>
+        <div style={{
+          position: "absolute", width: 600, height: 600, borderRadius: "50%",
+          background: "radial-gradient(circle, #38bdf8, transparent)",
+          opacity: 0.1, top: -200, right: -200,
+        }} />
+        <div style={{
+          position: "absolute", width: 400, height: 400, borderRadius: "50%",
+          background: "radial-gradient(circle, #7dd3fc, transparent)",
+          opacity: 0.05, bottom: -100, left: -100,
+        }} />
+      </div>
+
+      <div style={{ position: "relative", width: "100%", maxWidth: 440 }}>
+        {/* Page header */}
+        <div style={{ textAlign: "center", marginBottom: 32 }}>
+          <div style={{
+            width: 80, height: 80, borderRadius: 20, margin: "0 auto 16px",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            background: "white", border: "1px solid rgba(15, 23, 42, 0.08)",
+            boxShadow: "0 10px 30px rgba(15,23,42,0.08)",
+          }}>
+            <img src={logoImage} alt="Polytechnic Logo" style={{ width: 52, height: 52, objectFit: "contain" }} />
+          </div>
+          {/* Single h1 with two lines */}
+          <h1 style={{ fontSize: 26, fontWeight: 800, lineHeight: 1.2, letterSpacing: "-0.02em" }}>
+            <span style={{ color: "#f1f5f9", display: "block" }}>Student Feedback/Concern</span>
+            <span style={{ color: "#38bdf8", display: "block" }}>Management System</span>
+          </h1>
+          <p style={{ fontSize: 13, color: "#64748b", marginTop: 6 }}>Polytechnic College — Magpet</p>
+        </div>
+
+        {/* Login card */}
+        <div style={{ background: "white", borderRadius: 24, padding: 32, boxShadow: "0 25px 60px rgba(0,0,0,0.35)" }}>
+          <h2 style={{ fontSize: 18, fontWeight: 700, color: "#0f172a", marginBottom: 4 }}>Welcome back</h2>
+          <p style={{ fontSize: 13, color: "#64748b", marginBottom: 24 }}>Sign in to access your dashboard</p>
+
+          {/* Error */}
+          {error && (
+            <div style={{
+              display: "flex", alignItems: "center", gap: 8,
+              padding: "10px 12px", borderRadius: 10, marginBottom: 16,
+              background: "#fff1f2", border: "1px solid #fecdd3",
+            }}>
+              <span>⚠️</span>
+              <p style={{ fontSize: 12, color: "#be123c" }}>{error}</p>
+            </div>
+          )}
+
+          {/* Role selector */}
+          <div style={{ marginBottom: 16 }}>
+            <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 6 }}>Sign in as</label>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+              {["student","admin","staff"].map(r => (
+                <button key={r} onClick={() => setRole(r)} style={{
+                  padding: "8px 4px", borderRadius: 10, fontSize: 12, fontWeight: 600,
+                  border: role === r ? "2px solid #0ea5e9" : "2px solid #e2e8f0",
+                  background: role === r ? "#eff6ff" : "white",
+                  color: role === r ? "#0284c7" : "#64748b",
+                  textTransform: "capitalize", cursor: "pointer",
+                }}>
+                  {r === "student" ? "" : r === "admin" ? "" : ""} {r}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Email */}
+          <div style={{ marginBottom: 16 }}>
+            <label htmlFor="login-email" style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 6 }}>Email Address</label>
+            <div style={{ position: "relative" }}>
+              <span style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "#94a3b8", fontSize: 14, pointerEvents: "none" }}>✉️</span>
+              <input
+                id="login-email"
+                type="email" value={email} onChange={e => setEmail(e.target.value)}
+                placeholder="your@poly.edu"
+                onKeyDown={e => e.key === "Enter" && handleSubmit()}
+                style={{
+                  width: "100%", paddingLeft: 36, paddingRight: 16,
+                  paddingTop: 10, paddingBottom: 10,
+                  borderRadius: 10, border: "1.5px solid #e2e8f0",
+                  fontSize: 13, color: "#0f172a", background: "#f8fafc",
+                }}
+              />
+            </div>
+          </div>
+
+          {/* Password */}
+          <div style={{ marginBottom: 24 }}>
+            <label htmlFor="login-password" style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 6 }}>Password</label>
+            <div style={{ position: "relative" }}>
+              <span style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "#94a3b8", fontSize: 14, pointerEvents: "none" }}>🔒</span>
+              <input
+                id="login-password"
+                type={showPwd ? "text" : "password"} value={password} onChange={e => setPassword(e.target.value)}
+                placeholder="••••••••"
+                onKeyDown={e => e.key === "Enter" && handleSubmit()}
+                style={{
+                  width: "100%", paddingLeft: 36, paddingRight: 40,
+                  paddingTop: 10, paddingBottom: 10,
+                  borderRadius: 10, border: "1.5px solid #e2e8f0",
+                  fontSize: 13, color: "#0f172a", background: "#f8fafc",
+                }}
+              />
+              <button onClick={() => setShowPwd(!showPwd)} style={{
+                position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)",
+                background: "none", border: "none", cursor: "pointer", color: "#94a3b8", fontSize: 13, padding: 4,
+              }}>
+                {showPwd ? "hide" : "view"}
+              </button>
+            </div>
+          </div>
+
+          {/* Submit */}
+          <button
+            onClick={handleSubmit} disabled={loading}
+            className="btn-primary"
+            style={{
+              width: "100%", padding: "12px 0", borderRadius: 10, border: "none",
+              background: "linear-gradient(135deg, #0ea5e9, #0284c7)",
+              color: "white", fontSize: 14, fontWeight: 700,
+              cursor: loading ? "not-allowed" : "pointer",
+            }}
+          >
+            {loading ? "Signing in…" : "Sign In →"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════
+// STUDENT DASHBOARD
+// ═══════════════════════════════════════════════════════════
+function StudentDashboard({ user, concerns, onAddConcern, onLogout }) {
+  const [page, setPage] = useState("home");
+  const myConcerns = concerns.filter(c => c.studentId === user.id);
+
+  const navItems = [
+    { key: "home",       icon: "⊞", label: "Dashboard"          },
+    { key: "submit",     icon: "+", label: "Submit Concern"      },
+    { key: "myconcerns", icon: "≡", label: "My Concerns"         },
+  ];
+
+  return (
+    <div style={{ display: "flex", height: "100vh", overflow: "hidden", background: "#f0f4f8" }}>
+      <Sidebar navItems={navItems} active={page} onNav={setPage} onLogout={onLogout} user={user} />
+      <main style={{ flex: 1, overflowY: "auto" }}>
+        <div className="fade-in" style={{ padding: 24, maxWidth: 900, margin: "0 auto" }}>
+          {page === "home"       && <StudentHome       user={user} concerns={myConcerns} onNav={setPage} />}
+          {page === "submit"     && <SubmitConcern     user={user} onSubmit={c => { onAddConcern(c); setPage("myconcerns"); }} onCancel={() => setPage("home")} />}
+          {page === "myconcerns" && <MyConcerns        concerns={myConcerns} />}
+        </div>
+      </main>
+    </div>
+  );
+}
+
+function StudentHome({ user, concerns, onNav }) {
+  const pending  = concerns.filter(c => c.status === "Pending").length;
+  const resolved = concerns.filter(c => c.status === "Resolved").length;
+
+  return (
+    <div>
+      {/* Greeting */}
+      <div style={{ marginBottom: 24 }}>
+        <h1 style={{ fontSize: 24, fontWeight: 800, color: "#0f172a" }}>Good day, {user.name.split(" ")[0]}!</h1>
+        <p style={{ fontSize: 14, color: "#64748b", marginTop: 4 }}>{user.course} · {user.year} · Polytechnic College Magpet</p>
+      </div>
+
+      {/* Stats */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16, marginBottom: 24 }}>
+        <StatCard icon="[#]" label="Total Concerns" value={concerns.length} color="blue"    />
+        <StatCard icon="[P]" label="Pending"         value={pending}         color="amber"   />
+        <StatCard icon="[✓]" label="Resolved"         value={resolved}        color="emerald" />
+      </div>
+
+      {/* Quick actions */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 16, marginBottom: 24 }}>
+        {[
+          { key: "submit",    bg: "#eff6ff", icon: "[+]", title: "Submit a Feedback/Concern",   sub: "File a new feeedback/concern or request"         },
+        ].map(a => (
+          <button key={a.key} onClick={() => onNav(a.key)} className="card-hover" style={{
+            background: "white", border: "1px solid #e2e8f0", borderRadius: 16,
+            padding: 20, textAlign: "left", cursor: "pointer", transition: "all 0.2s ease",
+          }}
+          onMouseEnter={e => { e.currentTarget.style.background = "#f0f4f8"; e.currentTarget.style.borderColor = "#0ea5e9"; }}
+          onMouseLeave={e => { e.currentTarget.style.background = "white"; e.currentTarget.style.borderColor = "#e2e8f0"; }}
+          >
+            <div style={{ width: 40, height: 40, borderRadius: 10, background: a.bg, fontSize: 20, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 12 }}>{a.icon}</div>
+            <p style={{ fontSize: 15, fontWeight: 700, color: "#0f172a" }}>{a.title}</p>
+            <p style={{ fontSize: 12, color: "#64748b", marginTop: 4 }}>{a.sub}</p>
+          </button>
+        ))}
+      </div>
+
+      {/* Recent concerns */}
+      <div style={{ background: "white", borderRadius: 16, border: "1px solid #e2e8f0", overflow: "hidden" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 20px", borderBottom: "1px solid #f1f5f9" }}>
+          <h3 style={{ fontSize: 15, fontWeight: 700, color: "#0f172a" }}>My Recent Concerns</h3>
+          <button onClick={() => onNav("myconcerns")} style={{ fontSize: 12, color: "#0ea5e9", fontWeight: 600, background: "none", border: "none", cursor: "pointer", transition: "all 0.2s ease" }} onMouseEnter={e => e.currentTarget.style.color = "#0284c7"} onMouseLeave={e => e.currentTarget.style.color = "#0ea5e9"}>View all [→]</button>
+        </div>
+        {concerns.length === 0 ? (
+          <div style={{ padding: "48px 0", textAlign: "center" }}>
+            <p style={{ fontSize: 32, marginBottom: 8 }}>[No Concerns]</p>
+            <p style={{ fontSize: 14, color: "#64748b" }}>No concerns and feedback submitted yet</p>
+          </div>
+        ) : concerns.slice(0, 4).map(c => (
+          <div key={c.id} className="concern-row" style={{
+            display: "flex", alignItems: "center", justifyContent: "space-between",
+            padding: "14px 20px", borderBottom: "1px solid #f1f5f9",
+          }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
+              <span style={{ fontSize: 20, flexShrink: 0 }}>[{c.category.charAt(0)}]</span>
+              <div style={{ minWidth: 0 }}>
+                <p style={{ fontSize: 13, fontWeight: 600, color: "#0f172a", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.subject}</p>
+                <p style={{ fontSize: 11, color: "#94a3b8" }}>{c.date} · {c.category}</p>
+              </div>
+            </div>
+            <Badge text={c.status} type="status" />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── SUBMIT CONCERN ─────────────────────────────────────────
+function SubmitConcern({ user, onSubmit, onCancel }) {
+  const [form, setForm] = useState({ subject: "", category: "Academic", description: "", priority: "Medium" });
+  const [uploadedFile, setUploadedFile] = useState(null);
+  const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
+
+  const handleFileUpload = (e) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) {
+        alert("File size exceeds 5MB limit.");
+        return;
+      }
+      const validTypes = ["image/jpeg", "image/png", "image/gif", "application/pdf"];
+      if (!validTypes.includes(file.type)) {
+        alert("Only PDF and image files are allowed.");
+        return;
+      }
+      setUploadedFile(file);
+    }
+  };
+
+  const handleSubmit = () => {
+    if (!form.subject || !form.description) return alert("Please fill in all required fields.");
+    onSubmit({ ...form, studentId: user.id, studentName: user.name, attachedFile: uploadedFile?.name || null });
+  };
+
+  return (
+    <div>
+      {/* Back header */}
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 24 }}>
+        <button onClick={onCancel} style={{
+          width: 32, height: 32, borderRadius: "50%", border: "1px solid #e2e8f0",
+          background: "white", cursor: "pointer", fontSize: 16,
+          display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.2s ease",
+        }}
+        onMouseEnter={e => { e.currentTarget.style.background = "#f0f4f8"; e.currentTarget.style.borderColor = "#0ea5e9"; }}
+        onMouseLeave={e => { e.currentTarget.style.background = "white"; e.currentTarget.style.borderColor = "#e2e8f0"; }}
+        >[←]</button>
+        <div>
+          <h1 style={{ fontSize: 22, fontWeight: 800, color: "#0f172a" }}>Submit a Concern</h1>
+          <p style={{ fontSize: 13, color: "#64748b" }}>Your concern will be reviewed and addressed by our team</p>
+        </div>
+      </div>
+
+      <div style={{ background: "white", borderRadius: 16, padding: 24, border: "1px solid #e2e8f0" }}>
+        {/* Category + Priority row */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
+          <div>
+            <label style={labelStyle}>Category *</label>
+            <select value={form.category} onChange={e => set("category", e.target.value)} style={inputStyle}>
+              <option>Academic</option><option>Facilities</option><option>Financial</option>
+            </select>
+          </div>
+          <div>
+            <label style={labelStyle}>Priority Level</label>
+            <select value={form.priority} onChange={e => set("priority", e.target.value)} style={inputStyle}>
+              <option>Low</option><option>Medium</option><option>High</option>
+            </select>
+          </div>
+        </div>
+
+        <div style={{ marginBottom: 16 }}>
+          <label style={labelStyle}>Subject / Title *</label>
+          <input type="text" value={form.subject} onChange={e => set("subject", e.target.value)}
+            placeholder="Brief title of your concern" style={inputStyle} />
+        </div>
+
+        <div style={{ marginBottom: 16 }}>
+          <label style={labelStyle}>Description *</label>
+          <textarea value={form.description} onChange={e => set("description", e.target.value)} rows={5}
+            placeholder="Describe your concern in detail. Include relevant dates, names, and circumstances…"
+            style={{ ...inputStyle, resize: "none" }} />
+        </div>
+
+        {/* Attachment section */}
+        <div style={{
+          display: "flex", alignItems: "center", gap: 12,
+          padding: 12, borderRadius: 10, marginBottom: 24,
+          background: uploadedFile ? "#dbeafe" : "#f0fdf4", border: uploadedFile ? "1px solid #bae6fd" : "1px solid #bbf7d0",
+        }}>
+          <span>{uploadedFile ? "[✓]" : "[A]"}</span>
+          <div style={{ flex: 1 }}>
+            <p style={{ fontSize: 13, fontWeight: 600, color: uploadedFile ? "#0369a1" : "#15803d" }}>
+              {uploadedFile ? `File: ${uploadedFile.name}` : "Attach Supporting Documents (Optional)"}
+            </p>
+            <p style={{ fontSize: 11, color: uploadedFile ? "#0284c7" : "#16a34a" }}>
+              {uploadedFile ? "File uploaded successfully" : "PDF, Images accepted · Max 5MB"}
+            </p>
+          </div>
+          <label style={{ padding: "6px 12px", borderRadius: 8, background: uploadedFile ? "#bae6fd" : "#dcfce7", color: uploadedFile ? "#0369a1" : "#15803d", fontSize: 12, fontWeight: 600, border: "none", cursor: "pointer", display: "inline-block" }}>
+            <input type="file" onChange={handleFileUpload} accept=".pdf,.jpg,.jpeg,.png,.gif" style={{ display: "none" }} />
+            {uploadedFile ? "Change" : "Browse"}
+          </label>
+        </div>
+
+        <div style={{ display: "flex", gap: 12 }}>
+          <button onClick={handleSubmit} className="btn-primary" style={primaryBtn}>Submit Concern</button>
+          <button onClick={onCancel}     className="btn-secondary" style={secondaryBtn}>Cancel</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── MY CONCERNS ─────────────────────────────────────────────
+function MyConcerns({ concerns }) {
+  const [search, setSearch] = useState("");
+  const [filter, setFilter] = useState("All");
+  const filtered = concerns.filter(c =>
+    (filter === "All" || c.status === filter) &&
+    (c.subject.toLowerCase().includes(search.toLowerCase()) || c.category.toLowerCase().includes(search.toLowerCase()))
+  );
+
+  return (
+    <div>
+      <div style={{ marginBottom: 24 }}>
+        <h1 style={{ fontSize: 22, fontWeight: 800, color: "#0f172a" }}>My Concerns</h1>
+        <p style={{ fontSize: 13, color: "#64748b", marginTop: 4 }}>Track the status of all your submitted concerns</p>
+      </div>
+
+      <div style={{ background: "white", borderRadius: 16, border: "1px solid #e2e8f0", overflow: "hidden" }}>
+        {/* Filter bar */}
+        <div style={{ padding: 16, borderBottom: "1px solid #f1f5f9", display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10 }}>
+          <div style={{ position: "relative", flex: "1 1 180px" }}>
+            <span style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: "#94a3b8", pointerEvents: "none" }}>[S]</span>
+            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search concerns…"
+              style={{ ...inputStyle, paddingLeft: 32, margin: 0, width: "100%" }} />
+          </div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+            {["All","Pending","In Progress","Resolved"].map(s => (
+              <button key={s} onClick={() => setFilter(s)} style={{
+                padding: "6px 12px", borderRadius: 8, border: "none", cursor: "pointer",
+                background: filter === s ? "#0ea5e9" : "#f1f5f9",
+                color: filter === s ? "white" : "#64748b",
+                fontWeight: 600, fontSize: 12, whiteSpace: "nowrap",
+              }}>{s}</button>
+            ))}
+          </div>
+        </div>
+
+        {filtered.length === 0 ? (
+          <div style={{ padding: "64px 0", textAlign: "center" }}>
+            <p style={{ fontSize: 36, marginBottom: 8 }}>[SEARCH]</p>
+            <p style={{ fontSize: 14, color: "#64748b" }}>No concerns found</p>
+          </div>
+        ) : filtered.map(c => (
+          <div key={c.id} className="concern-row" style={{ padding: 20, borderBottom: "1px solid #f1f5f9" }}>
+            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 8, gap: 8 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", minWidth: 0 }}>
+                <span style={{ fontSize: 18, flexShrink: 0 }}>[{c.category.charAt(0)}]</span>
+                <p style={{ fontSize: 14, fontWeight: 700, color: "#0f172a" }}>{c.subject}</p>
+                <Badge text={c.priority} type="priority" />
+              </div>
+              <Badge text={c.status} type="status" />
+            </div>
+            <p style={{ fontSize: 12, color: "#64748b", marginBottom: 8, lineHeight: 1.6 }}>{c.description}</p>
+            <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 16 }}>
+              <span style={{ fontSize: 11, color: "#94a3b8" }}>. {c.date}</span>
+              <span style={{ fontSize: 11, color: "#94a3b8" }}>. {c.category}</span>
+              {c.assignedName && <span style={{ fontSize: 11, color: "#94a3b8" }}>👤 Assigned to {c.assignedName}</span>}
+            </div>
+            {c.remarks && (
+              <div style={{ marginTop: 10, padding: 12, borderRadius: 10, background: "#f0fdf4", border: "1px solid #bbf7d0" }}>
+                <p style={{ fontSize: 11, fontWeight: 600, color: "#15803d", marginBottom: 2 }}>Staff Remarks</p>
+                <p style={{ fontSize: 12, color: "#166534" }}>{c.remarks}</p>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+
+
+// ═══════════════════════════════════════════════════════════
+// ADMIN DASHBOARD
+// ═══════════════════════════════════════════════════════════

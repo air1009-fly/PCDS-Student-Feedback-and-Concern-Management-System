@@ -1,0 +1,237 @@
+﻿function StaffDashboard({ user, concerns, onUpdateConcern, onLogout }) {
+  const [page,     setPage]     = useState("home");
+  const [selected, setSelected] = useState(null);
+  const assigned = concerns.filter(c => c.assignedTo === user.id);
+
+  const navItems = [
+    { key: "home",  icon: "[H]", label: "Dashboard"         },
+    { key: "tasks", icon: "[T]", label: "My Assigned Tasks"  },
+  ];
+
+  return (
+    <div style={{ display: "flex", height: "100vh", overflow: "hidden", background: "#f0f4f8" }}>
+      <Sidebar navItems={navItems} active={page} onNav={p => { setPage(p); setSelected(null); }} onLogout={onLogout} user={user} />
+      <main style={{ flex: 1, overflowY: "auto" }}>
+        <div className="fade-in" style={{ padding: 24, maxWidth: 860, margin: "0 auto" }}>
+          {page === "home"  && <StaffHome  user={user} assigned={assigned} onNav={setPage} />}
+          {page === "tasks" && <StaffTasks assigned={assigned} selected={selected} onSelect={setSelected} onUpdate={onUpdateConcern} />}
+        </div>
+      </main>
+    </div>
+  );
+}
+
+function StaffHome({ user, assigned, onNav }) {
+  const inProg   = assigned.filter(c => c.status === "In Progress").length;
+  const resolved = assigned.filter(c => c.status === "Resolved").length;
+
+  return (
+    <div>
+      <div style={{ marginBottom: 24 }}>
+        <h1 style={{ fontSize: 24, fontWeight: 800, color: "#0f172a" }}>Staff Dashboard</h1>
+        <p style={{ fontSize: 14, color: "#64748b", marginTop: 4 }}>{user.dept || "Student Affairs"} — {user.name}</p>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16, marginBottom: 24 }}>
+        <StatCard icon="📋" label="Total Assigned" value={assigned.length} color="blue"    />
+        <StatCard icon="[→]" label="In Progress"     value={inProg}          color="sky"     />
+        <StatCard icon="[✓]" label="Resolved"          value={resolved}        color="emerald" />
+      </div>
+
+      <div style={{ background: "white", borderRadius: 16, border: "1px solid #e2e8f0", overflow: "hidden" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 20px", borderBottom: "1px solid #f1f5f9" }}>
+          <h3 style={{ fontSize: 15, fontWeight: 700, color: "#0f172a" }}>Assigned to Me</h3>
+          <button onClick={() => onNav("tasks")} style={{ fontSize: 12, color: "#0ea5e9", fontWeight: 600, background: "none", border: "none", cursor: "pointer", transition: "all 0.2s ease" }} onMouseEnter={e => e.currentTarget.style.color = "#0284c7"} onMouseLeave={e => e.currentTarget.style.color = "#0ea5e9"}>View all [→]</button>
+        </div>
+        {assigned.length === 0 ? (
+          <div style={{ padding: "48px 0", textAlign: "center" }}>
+            <p style={{ fontSize: 32, marginBottom: 8 }}>[No Tasks]</p>
+            <p style={{ fontSize: 14, color: "#64748b" }}>No concerns assigned to you yet</p>
+          </div>
+        ) : assigned.slice(0, 5).map(c => (
+          <div key={c.id} className="concern-row" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 20px", borderBottom: "1px solid #f1f5f9", gap: 12 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
+              <span style={{ fontSize: 20, flexShrink: 0 }}>{catEmoji[c.category]}</span>
+              <div style={{ minWidth: 0 }}>
+                <p style={{ fontSize: 13, fontWeight: 600, color: "#0f172a", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.subject}</p>
+                <p style={{ fontSize: 11, color: "#94a3b8" }}>{c.anonymous ? "Anonymous" : c.studentName} · {c.date}</p>
+              </div>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+              <Badge text={c.priority} type="priority" />
+              <Badge text={c.status}   type="status"   />
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function StaffTasks({ assigned, selected, onSelect, onUpdate }) {
+  const [remarks, setRemarks] = useState("");
+  const [status,  setStatus]  = useState("");
+
+  const openDetail = (c) => { onSelect(c); setRemarks(c.remarks); setStatus(c.status); };
+  const handleSave = () => {
+    if (!selected) return;
+    onUpdate(selected.id, { status, remarks });
+    onSelect({ ...selected, status, remarks });
+  };
+
+  return (
+    <div>
+      <div style={{ marginBottom: 24 }}>
+        <h1 style={{ fontSize: 22, fontWeight: 800, color: "#0f172a" }}>My Assigned Tasks</h1>
+        <p style={{ fontSize: 13, color: "#64748b", marginTop: 4 }}>Update status and add resolution remarks</p>
+      </div>
+
+      {assigned.length === 0 ? (
+        <div style={{ background: "white", borderRadius: 16, padding: "64px 0", textAlign: "center", border: "1px solid #e2e8f0" }}>
+          <p style={{ fontSize: 48, marginBottom: 12 }}></p>
+          <p style={{ fontSize: 16, fontWeight: 700, color: "#0f172a" }}>No tasks assigned</p>
+          <p style={{ fontSize: 13, color: "#64748b", marginTop: 4 }}>You'll see concerns assigned to you here</p>
+        </div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          {assigned.map(c => (
+            <div key={c.id} className="card-hover" style={{ background: "white", borderRadius: 16, padding: 20, border: "1px solid #e2e8f0" }}>
+              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 12, gap: 12 }}>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4, flexWrap: "wrap" }}>
+                    <span style={{ fontSize: 18, flexShrink: 0 }}>[{c.category.charAt(0)}]</span>
+                    <h3 style={{ fontSize: 15, fontWeight: 700, color: "#0f172a" }}>{c.subject}</h3>
+                    <Badge text={c.priority} type="priority" />
+                  </div>
+                  <p style={{ fontSize: 12, color: "#94a3b8" }}>{c.studentName} · Filed {c.date}</p>
+                </div>
+                <Badge text={c.status} type="status" />
+              </div>
+
+              <p style={{ fontSize: 13, color: "#64748b", marginBottom: 12, lineHeight: 1.6 }}>{c.description}</p>
+
+              {c.remarks && (
+                <div style={{ padding: 12, borderRadius: 10, marginBottom: 12, background: "#f0fdf4", border: "1px solid #bbf7d0" }}>
+                  <p style={{ fontSize: 11, fontWeight: 600, color: "#15803d" }}>Your Remarks</p>
+                  <p style={{ fontSize: 12, color: "#166534", marginTop: 2 }}>{c.remarks}</p>
+                </div>
+              )}
+
+              <button onClick={() => openDetail(c)} style={{ padding: "8px 16px", borderRadius: 10, background: "#eff6ff", color: "#3b82f6", fontSize: 12, fontWeight: 600, border: "none", cursor: "pointer", transition: "all 0.2s ease" }} onMouseEnter={e => { e.currentTarget.style.background = "#dbeafe"; }} onMouseLeave={e => { e.currentTarget.style.background = "#eff6ff"; }}>
+                Update Status & Remarks
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Update Modal */}
+      {selected && (
+        <Modal title={`Update — ${selected.subject}`} onClose={() => onSelect(null)} size="md">
+          <div style={{ padding: 24 }}>
+            <div style={{ padding: 12, borderRadius: 10, marginBottom: 16, background: "#f8fafc", border: "1px solid #e2e8f0" }}>
+              <p style={{ fontSize: 12, color: "#64748b", lineHeight: 1.6 }}>{selected.description}</p>
+            </div>
+            <div style={{ marginBottom: 16 }}>
+              <label style={labelStyle}>Update Status</label>
+              <select value={status} onChange={e => setStatus(e.target.value)} style={inputStyle}>
+                <option>Pending</option><option>In Progress</option><option>Resolved</option>
+              </select>
+            </div>
+            <div style={{ marginBottom: 20 }}>
+              <label style={labelStyle}>Remarks / Resolution Notes</label>
+              <textarea value={remarks} onChange={e => setRemarks(e.target.value)} rows={4}
+                placeholder="Describe the steps taken or resolution provided…"
+                style={{ ...inputStyle, resize: "none" }} />
+            </div>
+            <div style={{ display: "flex", gap: 12 }}>
+              <button onClick={handleSave} className="btn-primary" style={{ ...primaryBtn, background: "linear-gradient(135deg, #10b981, #059669)", transition: "all 0.2s ease" }} onMouseEnter={e => e.currentTarget.style.background = "linear-gradient(135deg, #059669, #047857)"} onMouseLeave={e => e.currentTarget.style.background = "linear-gradient(135deg, #10b981, #059669)"}>[✓] Save Update</button>
+              <button onClick={() => onSelect(null)} className="btn-secondary" style={secondaryBtn}>Cancel</button>
+            </div>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════
+// SHARED STYLE TOKENS
+// ═══════════════════════════════════════════════════════════
+const labelStyle = {
+  fontSize: 12, fontWeight: 600, color: "#374151",
+  display: "block", marginBottom: 6,
+};
+
+const inputStyle = {
+  width: "100%", padding: "10px 12px",
+  borderRadius: 10, border: "1.5px solid #e2e8f0",
+  fontSize: 13, color: "#0f172a", background: "#f8fafc",
+  marginBottom: 0,
+};
+
+const primaryBtn = {
+  padding: "10px 20px", borderRadius: 10, border: "none", cursor: "pointer",
+  background: "linear-gradient(135deg, #0ea5e9, #0284c7)",
+  color: "white", fontSize: 13, fontWeight: 700,
+};
+
+const secondaryBtn = {
+  padding: "10px 20px", borderRadius: 10, cursor: "pointer",
+  background: "white", border: "1px solid #e2e8f0",
+  fontSize: 13, fontWeight: 600, color: "#64748b",
+};
+
+const metaLabel = {
+  fontSize: 11, color: "#94a3b8", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em",
+};
+
+const metaValue = {
+  fontSize: 14, fontWeight: 600, color: "#0f172a", marginTop: 2,
+};
+
+// ═══════════════════════════════════════════════════════════
+// ROOT APP
+// ═══════════════════════════════════════════════════════════
+export default function App() {
+  const [currentUser, setCurrentUser] = useState(null);
+  const [users,       setUsers]       = useState(INITIAL_USERS);
+  const [concerns,    setConcerns]    = useState(INITIAL_CONCERNS);
+  const [loginError,  setLoginError]  = useState("");
+
+  const handleLogin = async (email, password, role) => {
+    try {
+      const res = await fetch("/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email_address: email, password, role }),
+      });
+      const data = await res.json();
+      if (res.ok) { setCurrentUser(data); setLoginError(""); }
+      else setLoginError(data.message || "Invalid credentials.");
+    } catch {
+      setLoginError("Cannot connect to server. Make sure the backend is running.");
+    }
+  };
+
+  const handleLogout = () => setCurrentUser(null);
+
+  const addConcern = (c) => setConcerns(prev => [{
+    ...c, id: prev.length + 1, date: new Date().toISOString().split("T")[0],
+    status: "Pending", assignedTo: null, assignedName: "", remarks: "",
+  }, ...prev]);
+
+  const updateConcern = (id, updates) => setConcerns(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c));
+  const addUser       = (u)            => setUsers(prev => [...prev, { ...u, id: prev.length + 1 }]);
+
+  return (
+    <>
+      {/* GlobalStyles rendered ONCE here for the entire app */}
+      <GlobalStyles />
+      {!currentUser && <LoginPage onLogin={handleLogin} error={loginError} />}
+      {currentUser?.role === "student" && <StudentDashboard user={currentUser} concerns={concerns} onAddConcern={addConcern} onLogout={handleLogout} />}
+      {currentUser?.role === "admin"   && <AdminDashboard   user={currentUser} concerns={concerns} users={users} onUpdateConcern={updateConcern} onAddUser={addUser} onLogout={handleLogout} />}
+      {currentUser?.role === "staff"   && <StaffDashboard   user={currentUser} concerns={concerns} onUpdateConcern={updateConcern} onLogout={handleLogout} />}
+    </>
+  );
+}
