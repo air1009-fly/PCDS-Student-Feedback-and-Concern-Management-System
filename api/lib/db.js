@@ -5,6 +5,8 @@ let pool;
 let initPromise;
 
 const REQUIRED_ENV = ["DB_HOST", "DB_USER", "DB_NAME"];
+const CONCERN_TABLE = "concern_tbl";
+const MESSAGE_TABLE = "message_tbl";
 
 export function getDatabaseConfigStatus() {
   const missing = REQUIRED_ENV.filter((name) => !process.env[name]);
@@ -117,6 +119,47 @@ async function initializeDatabase() {
     await ensureColumn(connection, "concerns", "admin_resolved_seen", "admin_resolved_seen TINYINT(1) NOT NULL DEFAULT 1");
 
     await connection.query(`
+      CREATE TABLE IF NOT EXISTS ${CONCERN_TABLE} (
+        id                  INT AUTO_INCREMENT PRIMARY KEY,
+        student_id          INT NOT NULL,
+        student_name        VARCHAR(150) NOT NULL,
+        subject             VARCHAR(255) NOT NULL,
+        category            ENUM('Services','Facilities','Administrative Concern') NOT NULL,
+        description         TEXT NOT NULL,
+        priority            ENUM('Low','Medium','High') NOT NULL DEFAULT 'Medium',
+        status              ENUM('Pending','In Progress','Resolved') NOT NULL DEFAULT 'Pending',
+        assigned_to         INT DEFAULT NULL,
+        assigned_name       VARCHAR(150) DEFAULT NULL,
+        remarks             TEXT DEFAULT NULL,
+        admin_instructions  TEXT DEFAULT NULL,
+        submission_type     ENUM('Concern','Feedback') NOT NULL DEFAULT 'Concern',
+        archived            TINYINT(1) NOT NULL DEFAULT 0,
+        admin_seen          TINYINT(1) NOT NULL DEFAULT 0,
+        admin_resolved_seen TINYINT(1) NOT NULL DEFAULT 1,
+        attached_file_name  VARCHAR(255) DEFAULT NULL,
+        attached_file_type  VARCHAR(100) DEFAULT NULL,
+        attached_file_data  LONGTEXT DEFAULT NULL,
+        date                DATE NOT NULL,
+        created_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    await connection.query(`
+      INSERT IGNORE INTO ${CONCERN_TABLE} (
+        id, student_id, student_name, subject, category, description, priority, status,
+        assigned_to, assigned_name, remarks, admin_instructions, submission_type, archived,
+        admin_seen, admin_resolved_seen, attached_file_name, attached_file_type,
+        attached_file_data, date, created_at
+      )
+      SELECT
+        id, student_id, student_name, subject, category, description, priority, status,
+        assigned_to, assigned_name, remarks, admin_instructions, submission_type, archived,
+        admin_seen, admin_resolved_seen, attached_file_name, attached_file_type,
+        attached_file_data, date, created_at
+      FROM concerns
+    `);
+
+    await connection.query(`
       CREATE TABLE IF NOT EXISTS messages (
         id           INT AUTO_INCREMENT PRIMARY KEY,
         concern_id   INT NOT NULL,
@@ -133,6 +176,24 @@ async function initializeDatabase() {
     await ensureColumn(connection, "messages", "message", "message TEXT NOT NULL");
     await ensureColumn(connection, "messages", "created_at", "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP");
     await connection.query("ALTER TABLE messages MODIFY COLUMN sender_role ENUM('admin','staff','student') NOT NULL");
+
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS ${MESSAGE_TABLE} (
+        id           INT AUTO_INCREMENT PRIMARY KEY,
+        concern_id   INT NOT NULL,
+        sender_name  VARCHAR(150) NOT NULL,
+        sender_role  ENUM('admin','staff','student') NOT NULL,
+        message      TEXT NOT NULL,
+        created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_message_concern_id (concern_id)
+      )
+    `);
+
+    await connection.query(`
+      INSERT IGNORE INTO ${MESSAGE_TABLE} (id, concern_id, sender_name, sender_role, message, created_at)
+      SELECT id, concern_id, sender_name, sender_role, message, created_at
+      FROM messages
+    `);
 
     const adminEmail = process.env.DEFAULT_ADMIN_EMAIL || "admin@poly.edu";
     const adminPassword = process.env.DEFAULT_ADMIN_PASSWORD || "admin123";

@@ -3,6 +3,8 @@ import express from "express";
 import { getDatabaseConfigStatus, query } from "./lib/db.js";
 
 const app = express();
+const CONCERN_TABLE = "concern_tbl";
+const MESSAGE_TABLE = "message_tbl";
 
 function sendServerError(res, err, fallbackMessage = "Server error.") {
   if (err.message?.startsWith("Missing required environment variable")) {
@@ -69,8 +71,8 @@ app.get("/health", async (req, res) => {
 
 app.get("/debug/schema", async (req, res) => {
   try {
-    const [concernColumns] = await query("SHOW COLUMNS FROM concerns");
-    const [messageColumns] = await query("SHOW COLUMNS FROM messages");
+    const [concernColumns] = await query(`SHOW COLUMNS FROM ${CONCERN_TABLE}`);
+    const [messageColumns] = await query(`SHOW COLUMNS FROM ${MESSAGE_TABLE}`);
     const [userColumns] = await query("SHOW COLUMNS FROM users");
     res.json({
       users: userColumns.map((column) => ({ field: column.Field, type: column.Type })),
@@ -238,7 +240,7 @@ app.get("/concerns", async (req, res) => {
              attached_file_name as attachedFileName, attached_file_type as attachedFileType,
              attached_file_data as attachedFileData,
              DATE_FORMAT(date, '%Y-%m-%d') as date
-      FROM concerns ORDER BY id DESC
+      FROM ${CONCERN_TABLE} ORDER BY id DESC
     `);
     res.json(rows);
   } catch (err) {
@@ -252,7 +254,7 @@ app.get("/concerns/daily-count/:studentId", async (req, res) => {
 
   try {
     const [rows] = await query(
-      "SELECT COUNT(*) as total FROM concerns WHERE student_id = ? AND DATE(date) = CURDATE()",
+      `SELECT COUNT(*) as total FROM ${CONCERN_TABLE} WHERE student_id = ? AND DATE(date) = CURDATE()`,
       [studentId],
     );
     res.json({ count: rows[0].total, remaining: Math.max(0, 2 - rows[0].total) });
@@ -285,7 +287,7 @@ app.post("/concerns", async (req, res) => {
     const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 
     const [countRows] = await query(
-      "SELECT COUNT(*) as total FROM concerns WHERE student_id = ? AND DATE(date) = ?",
+      `SELECT COUNT(*) as total FROM ${CONCERN_TABLE} WHERE student_id = ? AND DATE(date) = ?`,
       [studentId, date],
     );
     if (countRows[0].total >= 2) {
@@ -296,7 +298,7 @@ app.post("/concerns", async (req, res) => {
     }
 
     const [result] = await query(
-      `INSERT INTO concerns
+      `INSERT INTO ${CONCERN_TABLE}
        (student_id, student_name, subject, category, description, priority, submission_type, attached_file_name, attached_file_type, attached_file_data, date)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
@@ -343,12 +345,12 @@ app.patch("/concerns/:id", async (req, res) => {
   values.push(id);
 
   try {
-    const [existing] = await query("SELECT id FROM concerns WHERE id = ? LIMIT 1", [id]);
+    const [existing] = await query(`SELECT id FROM ${CONCERN_TABLE} WHERE id = ? LIMIT 1`, [id]);
     if (existing.length === 0) {
       return res.status(404).json({ message: "Concern not found." });
     }
 
-    await query(`UPDATE concerns SET ${fields.join(", ")} WHERE id = ?`, values);
+    await query(`UPDATE ${CONCERN_TABLE} SET ${fields.join(", ")} WHERE id = ?`, values);
     res.json({ message: "Concern updated successfully." });
   } catch (err) {
     console.error("Update concern error:", err.message);
@@ -360,7 +362,7 @@ app.delete("/concerns/:id", async (req, res) => {
   const { id } = req.params;
 
   try {
-    const [result] = await query("DELETE FROM concerns WHERE id = ?", [id]);
+    const [result] = await query(`DELETE FROM ${CONCERN_TABLE} WHERE id = ?`, [id]);
     if (result.affectedRows === 0) {
       return res.status(404).json({ message: "Concern not found." });
     }
@@ -376,7 +378,7 @@ app.get("/concerns/:id/messages", async (req, res) => {
 
   try {
     const [rows] = await query(
-      "SELECT id, concern_id, sender_name, sender_role, message, created_at FROM messages WHERE concern_id = ? ORDER BY created_at ASC",
+      `SELECT id, concern_id, sender_name, sender_role, message, created_at FROM ${MESSAGE_TABLE} WHERE concern_id = ? ORDER BY created_at ASC`,
       [id],
     );
     res.json(rows);
@@ -395,13 +397,13 @@ app.post("/concerns/:id/messages", async (req, res) => {
   }
 
   try {
-    const [concerns] = await query("SELECT id FROM concerns WHERE id = ? LIMIT 1", [id]);
+    const [concerns] = await query(`SELECT id FROM ${CONCERN_TABLE} WHERE id = ? LIMIT 1`, [id]);
     if (concerns.length === 0) {
       return res.status(404).json({ message: "Concern not found. Please refresh and try again." });
     }
 
     const [result] = await query(
-      "INSERT INTO messages (concern_id, sender_name, sender_role, message) VALUES (?, ?, ?, ?)",
+      `INSERT INTO ${MESSAGE_TABLE} (concern_id, sender_name, sender_role, message) VALUES (?, ?, ?, ?)`,
       [id, senderName, senderRole, message],
     );
     res.json({ id: result.insertId || null, message: "Message sent." });
