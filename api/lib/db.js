@@ -216,6 +216,18 @@ async function initializeDatabase() {
   }
 }
 
+export async function getSchemaSnapshot() {
+  const [userColumns] = await query("SHOW COLUMNS FROM users");
+  const [concernColumns] = await query(`SHOW COLUMNS FROM ${CONCERN_TABLE}`);
+  const [messageColumns] = await query(`SHOW COLUMNS FROM ${MESSAGE_TABLE}`);
+
+  return {
+    users: userColumns.map((column) => ({ field: column.Field, type: column.Type })),
+    concern_tbl: concernColumns.map((column) => ({ field: column.Field, type: column.Type })),
+    message_tbl: messageColumns.map((column) => ({ field: column.Field, type: column.Type })),
+  };
+}
+
 export async function query(...args) {
   if (!initPromise) {
     initPromise = initializeDatabase();

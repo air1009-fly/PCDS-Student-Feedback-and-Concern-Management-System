@@ -1,6 +1,6 @@
 import bcrypt from "bcryptjs";
 import express from "express";
-import { getDatabaseConfigStatus, query } from "./lib/db.js";
+import { getDatabaseConfigStatus, getSchemaSnapshot, query } from "./lib/db.js";
 
 const app = express();
 const CONCERN_TABLE = "concern_tbl";
@@ -71,14 +71,7 @@ app.get("/health", async (req, res) => {
 
 app.get("/debug/schema", async (req, res) => {
   try {
-    const [concernColumns] = await query(`SHOW COLUMNS FROM ${CONCERN_TABLE}`);
-    const [messageColumns] = await query(`SHOW COLUMNS FROM ${MESSAGE_TABLE}`);
-    const [userColumns] = await query("SHOW COLUMNS FROM users");
-    res.json({
-      users: userColumns.map((column) => ({ field: column.Field, type: column.Type })),
-      concerns: concernColumns.map((column) => ({ field: column.Field, type: column.Type })),
-      messages: messageColumns.map((column) => ({ field: column.Field, type: column.Type })),
-    });
+    res.json(await getSchemaSnapshot());
   } catch (err) {
     console.error("Schema debug error:", err.message);
     sendServerError(res, err);
