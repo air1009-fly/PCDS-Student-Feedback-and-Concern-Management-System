@@ -1,8 +1,36 @@
 import bcrypt from "bcryptjs";
 import express from "express";
-import { query } from "./lib/db.js";
+import { getDatabaseConfigStatus, query } from "./lib/db.js";
 
 const app = express();
+
+function sendServerError(res, err, fallbackMessage = "Server error.") {
+  if (err.message?.startsWith("Missing required environment variable")) {
+    return res.status(503).json({
+      message: "Database is not configured in Vercel. Add DB_HOST, DB_USER, DB_PASSWORD, DB_PORT, and DB_NAME in Project Settings > Environment Variables.",
+    });
+  }
+
+  if (["ENOTFOUND", "ECONNREFUSED", "ETIMEDOUT", "EHOSTUNREACH"].includes(err.code)) {
+    return res.status(503).json({
+      message: "Database connection failed. DB_HOST must be a hosted MySQL server reachable from Vercel, not localhost.",
+    });
+  }
+
+  if (err.code === "ER_ACCESS_DENIED_ERROR") {
+    return res.status(503).json({
+      message: "Database login failed. Check DB_USER and DB_PASSWORD in Vercel environment variables.",
+    });
+  }
+
+  if (err.code === "ER_BAD_DB_ERROR") {
+    return res.status(503).json({
+      message: "Database name was not found. Create the database or correct DB_NAME in Vercel.",
+    });
+  }
+
+  return res.status(500).json({ message: err.sqlMessage || fallbackMessage });
+}
 
 app.use(express.json({ limit: "20mb" }));
 app.use(express.urlencoded({ extended: true, limit: "20mb" }));
@@ -17,6 +45,26 @@ app.use((req, res, next) => {
 
 app.get("/", (req, res) => {
   res.json({ message: "Backend is working" });
+});
+
+app.get("/health", async (req, res) => {
+  const config = getDatabaseConfigStatus();
+
+  if (!config.configured) {
+    return res.status(503).json({
+      ok: false,
+      database: "missing-env",
+      missing: config.missing,
+    });
+  }
+
+  try {
+    await query("SELECT 1");
+    res.json({ ok: true, database: "connected" });
+  } catch (err) {
+    console.error("Health check error:", err.message);
+    sendServerError(res, err);
+  }
 });
 
 app.post("/register", async (req, res) => {
@@ -39,7 +87,7 @@ app.post("/register", async (req, res) => {
     if (err.code === "ER_DUP_ENTRY") {
       return res.status(409).json({ message: "Email already exists." });
     }
-    res.status(500).json({ message: "Server error." });
+    sendServerError(res, err);
   }
 });
 
@@ -77,7 +125,7 @@ app.post("/login", async (req, res) => {
     });
   } catch (err) {
     console.error("Login error:", err.message);
-    res.status(500).json({ message: "Server error." });
+    sendServerError(res, err);
   }
 });
 
@@ -89,7 +137,7 @@ app.get("/users", async (req, res) => {
     res.json(rows);
   } catch (err) {
     console.error("Get users error:", err.message);
-    res.status(500).json({ message: "Server error." });
+    sendServerError(res, err);
   }
 });
 
@@ -104,7 +152,7 @@ app.delete("/users/:id", async (req, res) => {
     res.json({ message: "User deleted successfully." });
   } catch (err) {
     console.error("Delete user error:", err.message);
-    res.status(500).json({ message: "Server error." });
+    sendServerError(res, err);
   }
 });
 
@@ -157,7 +205,7 @@ app.patch("/users/:id", async (req, res) => {
     if (err.code === "ER_DUP_ENTRY") {
       return res.status(409).json({ message: "Email already exists." });
     }
-    res.status(500).json({ message: "Server error." });
+    sendServerError(res, err);
   }
 });
 
@@ -179,7 +227,7 @@ app.get("/concerns", async (req, res) => {
     res.json(rows);
   } catch (err) {
     console.error("Get concerns error:", err.message);
-    res.status(500).json({ message: "Server error." });
+    sendServerError(res, err);
   }
 });
 
@@ -194,7 +242,7 @@ app.get("/concerns/daily-count/:studentId", async (req, res) => {
     res.json({ count: rows[0].total, remaining: Math.max(0, 2 - rows[0].total) });
   } catch (err) {
     console.error("Daily count error:", err.message);
-    res.status(500).json({ message: "Server error." });
+    sendServerError(res, err);
   }
 });
 
@@ -253,7 +301,7 @@ app.post("/concerns", async (req, res) => {
     res.json({ id: result.insertId, message: "Concern submitted successfully." });
   } catch (err) {
     console.error("Create concern error:", err.message, err.sqlMessage || "");
-    res.status(500).json({ message: err.sqlMessage || "Server error." });
+    sendServerError(res, err);
   }
 });
 
@@ -286,7 +334,7 @@ app.patch("/concerns/:id", async (req, res) => {
     res.json({ message: "Concern updated successfully." });
   } catch (err) {
     console.error("Update concern error:", err.message);
-    res.status(500).json({ message: "Server error." });
+    sendServerError(res, err);
   }
 });
 
@@ -301,7 +349,7 @@ app.delete("/concerns/:id", async (req, res) => {
     res.json({ message: "Concern deleted successfully." });
   } catch (err) {
     console.error("Delete concern error:", err.message);
-    res.status(500).json({ message: "Server error." });
+    sendServerError(res, err);
   }
 });
 
@@ -316,7 +364,7 @@ app.get("/concerns/:id/messages", async (req, res) => {
     res.json(rows);
   } catch (err) {
     console.error("Get messages error:", err.message);
-    res.status(500).json({ message: "Server error." });
+    sendServerError(res, err);
   }
 });
 
@@ -336,7 +384,7 @@ app.post("/concerns/:id/messages", async (req, res) => {
     res.json({ id: result.insertId, message: "Message sent." });
   } catch (err) {
     console.error("Send message error:", err.message);
-    res.status(500).json({ message: "Server error." });
+    sendServerError(res, err);
   }
 });
 

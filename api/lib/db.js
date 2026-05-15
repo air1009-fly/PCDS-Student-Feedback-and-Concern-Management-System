@@ -4,6 +4,17 @@ import mysql from "mysql2/promise";
 let pool;
 let initPromise;
 
+const REQUIRED_ENV = ["DB_HOST", "DB_USER", "DB_NAME"];
+
+export function getDatabaseConfigStatus() {
+  const missing = REQUIRED_ENV.filter((name) => !process.env[name]);
+
+  return {
+    configured: missing.length === 0,
+    missing,
+  };
+}
+
 function requiredEnv(name) {
   const value = process.env[name];
   if (!value) {
