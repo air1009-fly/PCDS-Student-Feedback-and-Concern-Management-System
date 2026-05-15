@@ -31,6 +31,7 @@ function getPool() {
       password: process.env.DB_PASSWORD || "",
       database: requiredEnv("DB_NAME"),
       port: process.env.DB_PORT || 3306,
+      ssl: process.env.DB_SSL === "true" ? { rejectUnauthorized: false } : undefined,
       waitForConnections: true,
       connectionLimit: 5,
       queueLimit: 0,
